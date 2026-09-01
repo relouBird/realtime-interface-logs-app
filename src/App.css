@@ -1,0 +1,26 @@
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  overflow-x: hidden;
+}
+
+.toast-bottom {
+  position: fixed !important;
+  bottom: 5em;
+  right: 2em;
+  z-index: 1000;
+}
+.animate-notif {
+  animation: come 400ms linear;
+}
+
+@keyframes come {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
