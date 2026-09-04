@@ -12,16 +12,14 @@ import {
   Download,
   ArrowUp,
   MoreVertical,
-  CheckCircle,
-  XCircle,
-  Clock,
   type LucideIcon,
 } from "lucide-react";
 
 import { cn } from "@/utils/cn";
 import { Button } from "@/components/ui/Button";
 import { OPERATIONS, INCOMING_OPERATION } from "@/constants/mock/operation";
-import type { OperationFinancialStatus } from "@/types/transaction.type";
+import { StatusBadge } from "@/components/transactions/StatusBadge";
+import { ChannelBadge } from "@/components/transactions/ChannelBadge";
 
 /* -------------------------------------------------------------------------- */
 /*  Small presentational helpers                                              */
@@ -51,69 +49,6 @@ function KpiCard({
       </p>
       <div className="mt-2 text-xs text-text-secondary">{footer}</div>
     </div>
-  );
-}
-
-function ChannelBadge({ channel }: { channel: string }) {
-  return (
-    <span className="inline-flex w-3/4 justify-center items-center rounded-xs border bg-sidebar-badge-background/10 border-badge-neutral-text/20 px-2 py-0.5 text-xs font-medium text-badge-neutral-text">
-      {channel}
-    </span>
-  );
-}
-
-const STATUS_CONFIG: Record<
-  OperationFinancialStatus,
-  {
-    label: string;
-    icon: typeof CheckCircle;
-    bg: string;
-    text: string;
-    spin?: boolean;
-  }
-> = {
-  settled: {
-    label: "Settled",
-    icon: CheckCircle,
-    bg: "bg-badge-success-background",
-    text: "text-badge-success-text",
-  },
-  processing: {
-    label: "Processing",
-    icon: RefreshCw,
-    bg: "bg-badge-warning-background",
-    text: "text-badge-warning-text",
-    spin: true,
-  },
-  failed: {
-    label: "Failed",
-    icon: XCircle,
-    bg: "bg-badge-error-background",
-    text: "text-badge-error-text",
-  },
-  timeout: {
-    label: "Timeout",
-    icon: Clock,
-    bg: "bg-transparent",
-    text: "text-badge-warning-icon-color",
-  },
-};
-
-function StatusBadge({ status }: { status: OperationFinancialStatus }) {
-  const config = STATUS_CONFIG[status];
-  const Icon = config.icon;
-
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium",
-        config.bg,
-        config.text,
-      )}
-    >
-      <Icon className={cn("size-3", config.spin && "animate-spin")} />
-      {config.label}
-    </span>
   );
 }
 
@@ -202,7 +137,8 @@ export default function OverviewPage() {
               TOTAL TRANSACTIONS (24H)
             </p>
             <p className="mt-0.5 text-sm font-semibold text-foreground-100">
-              <span className="font-subtitle">1,248,932</span> <span className="text-success-600">↑2.4%</span>
+              <span className="font-subtitle">1,248,932</span>{" "}
+              <span className="text-success-600">↑2.4%</span>
             </p>
           </div>
           <div className="text-right">
@@ -210,7 +146,8 @@ export default function OverviewPage() {
               SUCCESS RATE
             </p>
             <p className="mt-0.5 text-sm font-semibold text-foreground-100">
-              <span className="font-subtitle">99.8%</span> <span className="text-text-secondary">Stable</span>
+              <span className="font-subtitle">99.8%</span>{" "}
+              <span className="text-text-secondary">Stable</span>
             </p>
           </div>
           <div className="text-right">
@@ -218,7 +155,8 @@ export default function OverviewPage() {
               ACTIVE PROCESSING
             </p>
             <p className="mt-0.5 text-sm font-semibold text-foreground-100">
-              <span className="font-subtitle">84</span> <span className="text-text-secondary">Ops/sec</span>
+              <span className="font-subtitle">84</span>{" "}
+              <span className="text-text-secondary">Ops/sec</span>
             </p>
           </div>
         </div>

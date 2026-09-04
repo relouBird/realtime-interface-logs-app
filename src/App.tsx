@@ -10,11 +10,13 @@ import { Toast } from "./components/ui/Toast";
 // Load les pages du routage
 import OverviewPage from "./routes/OverviewPage";
 import TransactionsPage from "./routes/TransactionsPage";
+import TransactionDetailPage from "./routes/TransactionDetailPage";
 import IsoMessagesPage from "./routes/IsoMessagesPage";
 import RawLogsPage from "./routes/RawLogsPage";
 
 // Load les styles globaux
 import "./App.css";
+import IsoMessageDetailPage from "./routes/IsoMessageDetailPage";
 
 function Build() {
   const { close, visible, message, color } = useStore(useNotificationStore);
@@ -37,7 +39,9 @@ function Build() {
           <Route element={<Layout />}>
             <Route path="/" element={<OverviewPage />} />
             <Route path="/transactions" element={<TransactionsPage />} />
+            <Route path="/transactions/:reference" element={<TransactionDetailPage />} />
             <Route path="/iso-messages" element={<IsoMessagesPage />} />
+            <Route path="/iso-messages/:id" element={<IsoMessageDetailPage />} />
             <Route path="/raw-logs" element={<RawLogsPage />} />
           </Route>
         </Routes>
