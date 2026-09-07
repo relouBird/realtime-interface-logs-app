@@ -15,7 +15,7 @@ import {
 import { cn } from "@/utils/cn";
 import { MOCK_ISO_LOGS } from "@/constants/mock/mockIsoLogs";
 import type { IsoLogEntry } from "@/types/isoLog.type";
-import { dateFormat } from "@/utils/helper";
+import { dateFormat } from "@/helpers";
 
 const PAGE_SIZE = 6;
 
