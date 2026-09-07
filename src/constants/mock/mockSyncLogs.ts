@@ -113,4 +113,40 @@ export const MOCK_SYNC_LOGS: SyncLogEntry[] = [
   <session-start/>
 </log>`,
   },
+
+  {
+    id: 345,
+    timestamp: "2026-09-03 22:41:54.653",
+    status: "INFO",
+    message: `<log realm="iso-server.session/127.0.0.1:55060" at="2026-09-03T23:41:52.650493100" lifespan="1ms">
+  <session-start/>
+</log>`,
+  },
+
+  {
+    id: 346,
+    timestamp: "2026-09-03 22:41:55.653",
+    status: "INFO",
+    message: `<log realm="iso-server.session/127.0.0.1:55060" at="2026-09-03T23:41:52.650493100" lifespan="1ms">
+  <session-start/>
+</log>`,
+  },
+
+  {
+    id: 347,
+    timestamp: "2026-09-03 22:41:56.653",
+    status: "INFO",
+    message: `<log realm="iso-server.session/127.0.0.1:55060" at="2026-09-03T23:41:52.650493100" lifespan="1ms">
+  <session-start/>
+</log>`,
+  },
+
+  {
+    id: 348,
+    timestamp: "2026-09-03 22:41:57.653",
+    status: "INFO",
+    message: `<log realm="iso-server.session/127.0.0.1:55060" at="2026-09-03T23:41:52.650493100" lifespan="1ms">
+  <session-start/>
+</log>`,
+  },
 ];

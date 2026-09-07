@@ -14,9 +14,10 @@ import {
   summarizeLogMessage,
   toDate,
 } from "@/utils/logParsing";
-import { dateFormat } from "@/utils/helper";
+import { dateFormat } from "@/helpers";
 
 const LEVEL_OPTIONS = ["All Levels", "INFO", "WARN", "ERROR", "DEBUG"];
+
 const TIME_RANGE_OPTIONS = [
   { label: "Last 15m", ms: 15 * 60 * 1000 },
   { label: "Last 1h", ms: 60 * 60 * 1000 },
@@ -212,7 +213,7 @@ export default function RawLogsPage() {
       {/* Console */}
       <div
         ref={consoleRef}
-        className="max-h-155 overflow-y-auto rounded-xs border border-card-border bg-sidebar-nav-default-background p-3 font-subtitle text-xs shadow-xs"
+        className="max-h-[65vh] overflow-y-auto rounded-xs border border-card-border bg-sidebar-nav-default-background p-3 font-subtitle text-xs shadow-xs"
       >
         {/* Table header */}
         <div className="sticky -top-3 z-10 grid grid-cols-[74px_190px_140px_1fr_20px] gap-3 border-b border-white-100/10 bg-sidebar-nav-default-background px-2 py-2 text-[11px] font-semibold tracking-wide text-white-60">
