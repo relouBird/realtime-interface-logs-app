@@ -2,7 +2,7 @@
 import { useSeoHead } from "@/composables/useSeoHead";
 
 // routes/IsoMessagesPage.tsx
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import {
   Search,
@@ -13,11 +13,9 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/utils/cn";
-import { MOCK_ISO_LOGS } from "@/constants/mock/mockIsoLogs";
 import type { IsoLogEntry } from "@/types/isoLog.type";
 import { dateFormat } from "@/helpers";
-
-const PAGE_SIZE = 6;
+import { useIsoMsgLogStore } from "@/stores/iso-msg-logs.store";
 
 function MtiBadge({ mti }: { mti: string }) {
   return (
@@ -60,28 +58,43 @@ export default function IsoMessagesPage() {
 
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"list" | "grid">("list");
-  const [page, setPage] = useState(1);
+
+  // Store
+  const currentPage = useIsoMsgLogStore((state) => state.currentPage);
+  const pages = useIsoMsgLogStore((state) => state.pages);
+  const hasMore = useIsoMsgLogStore((state) => state.hasMore);
+  const setPage = useIsoMsgLogStore((state) => state.goToPage);
+  const getPreviousPage = useIsoMsgLogStore((state) => state.getPreviousPage);
+  const getNextPage = useIsoMsgLogStore((state) => state.getNextPage);
+
+  const getMany = useIsoMsgLogStore((state) => state.getMany);
+  const loading = useIsoMsgLogStore((state) => state.loading);
 
   const filtered = useMemo(() => {
+    const currentLogs = pages[currentPage - 1]?.data ?? [];
     const query = search.trim().toLowerCase();
-    return MOCK_ISO_LOGS.filter(
-      (entry) => query.length === 0 || entry.stan.toLowerCase().includes(query),
-    ).sort(
-      (a, b) =>
-        new Date(b.event_time).getTime() - new Date(a.event_time).getTime(),
-    );
-  }, [search]);
-
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const currentPage = Math.min(page, pageCount);
-  const pageItems = filtered.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE,
-  );
+    return currentLogs
+      .filter(
+        (entry) =>
+          query.length === 0 || entry.stan.toLowerCase().includes(query),
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.event_time).getTime() - new Date(a.event_time).getTime(),
+      );
+  }, [search, pages, currentPage]);
 
   const goToDetail = (entry: IsoLogEntry) => {
     navigate(`/iso-messages/${entry.id}`);
   };
+
+  // Chargement initial
+  useEffect(() => {
+    if (pages.length === 0 && !loading) {
+      getMany();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="flex flex-col gap-6">
@@ -152,7 +165,7 @@ export default function IsoMessagesPage() {
                 </tr>
               </thead>
               <tbody>
-                {pageItems.map((entry) => (
+                {filtered.map((entry) => (
                   <tr
                     key={entry.id}
                     onClick={() => goToDetail(entry)}
@@ -190,7 +203,7 @@ export default function IsoMessagesPage() {
                   </tr>
                 ))}
 
-                {pageItems.length === 0 && (
+                {filtered.length === 0 && (
                   <tr>
                     <td
                       colSpan={5}
@@ -206,37 +219,34 @@ export default function IsoMessagesPage() {
 
           {/* Pagination */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-card-border p-4 text-sm text-text-secondary">
-            <span>
-              Showing{" "}
-              {pageItems.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}{" "}
-              to {(currentPage - 1) * PAGE_SIZE + pageItems.length} of{" "}
-              {filtered.length} entries
-            </span>
+            <span>Showing {filtered.length} entries</span>
             <div className="flex items-center gap-1">
               <button
                 disabled={currentPage === 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                onClick={() => getPreviousPage()}
                 className="rounded-xs px-2.5 py-1 text-text-secondary hover:bg-background-soft-100 disabled:cursor-not-allowed disabled:text-text-tertiary disabled:hover:bg-transparent"
               >
                 Prev
               </button>
-              {Array.from({ length: pageCount }, (_, i) => i + 1).map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setPage(n)}
-                  className={cn(
-                    "rounded-xs px-2.5 py-1",
-                    n === currentPage
-                      ? "bg-foreground-100 text-white-100"
-                      : "text-text-secondary hover:bg-background-soft-100",
-                  )}
-                >
-                  {n}
-                </button>
-              ))}
+              {Array.from({ length: pages.length }, (_, i) => i + 1).map(
+                (n) => (
+                  <button
+                    key={n}
+                    onClick={() => setPage(n)}
+                    className={cn(
+                      "rounded-xs px-2.5 py-1",
+                      n === currentPage
+                        ? "bg-foreground-100 text-white-100"
+                        : "text-text-secondary hover:bg-background-soft-100",
+                    )}
+                  >
+                    {n}
+                  </button>
+                ),
+              )}
               <button
-                disabled={currentPage === pageCount}
-                onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                disabled={hasMore === false}
+                onClick={() => getNextPage()}
                 className="rounded-xs px-2.5 py-1 text-text-secondary hover:bg-background-soft-100 disabled:cursor-not-allowed disabled:text-text-tertiary disabled:hover:bg-transparent"
               >
                 Next
@@ -250,7 +260,7 @@ export default function IsoMessagesPage() {
       {view === "grid" && (
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {pageItems.map((entry) => (
+            {filtered.map((entry) => (
               <button
                 key={entry.id}
                 onClick={() => goToDetail(entry)}
@@ -282,8 +292,8 @@ export default function IsoMessagesPage() {
               </button>
             ))}
 
-            {pageItems.length === 0 && (
-              <div className="col-span-full rounded-lg border border-dashed border-card-border p-10 text-center text-sm text-text-secondary">
+            {filtered.length === 0 && (
+              <div className="col-span-full rounded-xs border border-dashed border-card-border p-10 text-center text-sm text-text-secondary">
                 Aucun message ne correspond à ce STAN.
               </div>
             )}
@@ -291,37 +301,34 @@ export default function IsoMessagesPage() {
 
           {/* Pagination */}
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xs border border-card-border bg-card-background-100 p-4 text-sm text-text-secondary shadow-xs">
-            <span>
-              Showing{" "}
-              {pageItems.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}{" "}
-              to {(currentPage - 1) * PAGE_SIZE + pageItems.length} of{" "}
-              {filtered.length} entries
-            </span>
+            <span>Showing {filtered.length} entries</span>
             <div className="flex items-center gap-1">
               <button
                 disabled={currentPage === 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                onClick={() => getPreviousPage()}
                 className="rounded-xs px-2.5 py-1 text-text-secondary hover:bg-background-soft-100 disabled:cursor-not-allowed disabled:text-text-tertiary disabled:hover:bg-transparent"
               >
                 Prev
               </button>
-              {Array.from({ length: pageCount }, (_, i) => i + 1).map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setPage(n)}
-                  className={cn(
-                    "rounded-xs px-2.5 py-1",
-                    n === currentPage
-                      ? "bg-foreground-100 text-white-100"
-                      : "text-text-secondary hover:bg-background-soft-100",
-                  )}
-                >
-                  {n}
-                </button>
-              ))}
+              {Array.from({ length: pages.length }, (_, i) => i + 1).map(
+                (n) => (
+                  <button
+                    key={n}
+                    onClick={() => setPage(n)}
+                    className={cn(
+                      "rounded-xs px-2.5 py-1",
+                      n === currentPage
+                        ? "bg-foreground-100 text-white-100"
+                        : "text-text-secondary hover:bg-background-soft-100",
+                    )}
+                  >
+                    {n}
+                  </button>
+                ),
+              )}
               <button
-                disabled={currentPage === pageCount}
-                onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                disabled={hasMore === false}
+                onClick={() => getNextPage()}
                 className="rounded-xs px-2.5 py-1 text-text-secondary hover:bg-background-soft-100 disabled:cursor-not-allowed disabled:text-text-tertiary disabled:hover:bg-transparent"
               >
                 Next

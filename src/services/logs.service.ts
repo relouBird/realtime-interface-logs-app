@@ -2,9 +2,10 @@ import type { AxiosResponse } from "axios";
 import { request } from "@/helpers/request.helper";
 import type { RabbitHealth } from "@/types";
 import type { SyncLogEntry } from "@/types/syncLog.type";
+import type { IsoLogEntry } from "@/types/isoLog.type";
 
 // Interfaces de Bases
-interface RawLogsParams {
+interface LogsParams {
   cursor?: string;
   limit?: number;
 }
@@ -22,10 +23,14 @@ interface ResponseFormData<T> {
 export type PaymentServiceProps = {
   /** GET /api/payment/health */
   fetchHealth: () => Promise<AxiosResponse<RabbitHealth>>;
-  /** GET /api/payment/logs?stan= */
+  /** GET /api/logger/raw-logs?size=&cursor= */
   fetchRawLogs: (
-    params: RawLogsParams,
+    params: LogsParams,
   ) => Promise<AxiosResponse<ResponseFormData<SyncLogEntry>>>;
+  /** GET /api/logger/iso-messages-logs?size=&cursor= */
+  fetchIsoMsgLogs: (
+    params: LogsParams,
+  ) => Promise<AxiosResponse<ResponseFormData<IsoLogEntry>>>;
 };
 
 export default function logService(): PaymentServiceProps {
@@ -35,8 +40,18 @@ export default function logService(): PaymentServiceProps {
     });
   };
 
-  const fetchRawLogs = async ({ cursor, limit = 50 }: RawLogsParams) => {
+  const fetchRawLogs = async ({ cursor, limit = 50 }: LogsParams) => {
     return await request(`/logger/raw-logs`, {
+      method: "get",
+      params: {
+        cursor,
+        limit,
+      },
+    });
+  };
+
+  const fetchIsoMsgLogs = async ({ cursor, limit = 50 }: LogsParams) => {
+    return await request(`/logger/iso-message-logs`, {
       method: "get",
       params: {
         cursor,
@@ -48,5 +63,6 @@ export default function logService(): PaymentServiceProps {
   return {
     fetchHealth,
     fetchRawLogs,
+    fetchIsoMsgLogs,
   };
 }
