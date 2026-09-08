@@ -3,9 +3,7 @@ import { useSeoHead } from "@/composables/useSeoHead";
 
 // routes/RawLogsPage.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, ChevronRight, Copy, Radio } from "lucide-react";
-
-import { MOCK_SYNC_LOGS } from "@/constants/mock/mockSyncLogs";
+import { ChevronRight, Copy, Radio } from "lucide-react";
 
 import { cn } from "@/utils/cn";
 import {
@@ -15,15 +13,9 @@ import {
   toDate,
 } from "@/utils/logParsing";
 import { dateFormat } from "@/helpers";
+import { useRawLogStore } from "@/stores/raw-logs.store";
 
 const LEVEL_OPTIONS = ["All Levels", "INFO", "WARN", "ERROR", "DEBUG"];
-
-const TIME_RANGE_OPTIONS = [
-  { label: "Last 15m", ms: 15 * 60 * 1000 },
-  { label: "Last 1h", ms: 60 * 60 * 1000 },
-  { label: "Last 24h", ms: 24 * 60 * 60 * 1000 },
-  { label: "All time", ms: null as number | null },
-];
 
 const LEVEL_STYLES: Record<string, string> = {
   INFO: "border-card-border bg-text-secondary/30 text-text-secondary",
@@ -85,47 +77,38 @@ export default function RawLogsPage() {
     forcePrefix: true,
   });
 
-  const [search, setSearch] = useState("");
   const [levelFilter, setLevelFilter] = useState(LEVEL_OPTIONS[0]);
-  const [timeRangeLabel, setTimeRangeLabel] = useState(
-    TIME_RANGE_OPTIONS[3].label,
-  );
   const [isLive, setIsLive] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
   const consoleRef = useRef<HTMLDivElement>(null);
 
+  // Store
+  const currentPage = useRawLogStore((state) => state.currentPage);
+  const pages = useRawLogStore((state) => state.pages);
+  const hasMore = useRawLogStore((state) => state.hasMore);
+  const setPage = useRawLogStore((state) => state.goToPage);
+  const getPreviousPage = useRawLogStore((state) => state.getPreviousPage);
+  const getNextPage = useRawLogStore((state) => state.getNextPage);
+
+  const getMany = useRawLogStore((state) => state.getMany);
+  const loading = useRawLogStore((state) => state.loading);
+
   const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    const range = TIME_RANGE_OPTIONS.find((r) => r.label === timeRangeLabel);
-    const latest = Math.max(
-      ...MOCK_SYNC_LOGS.map((l) => toDate(l.timestamp).getTime()),
-    );
-
-    return MOCK_SYNC_LOGS.filter((log) => {
-      const { service, session } = parseLogService(log.message);
-
-      const matchesQuery =
-        query.length === 0 ||
-        String(log.id).includes(query) ||
-        service.toLowerCase().includes(query) ||
-        (session ?? "").toLowerCase().includes(query) ||
-        log.message.toLowerCase().includes(query);
-
+    const currentLogs = pages[currentPage - 1]?.data ?? [];
+    const filteredLogs = currentLogs.filter((log) => {
       const matchesLevel =
         levelFilter === LEVEL_OPTIONS[0] || log.status === levelFilter;
-
-      const matchesRange =
-        !range?.ms || latest - toDate(log.timestamp).getTime() <= range.ms;
-
-      return matchesQuery && matchesLevel && matchesRange;
-    }).sort(
+      return matchesLevel;
+    });
+    // Tri : on crée une copie pour ne pas muter
+    return [...filteredLogs].sort(
       (a, b) => toDate(a.timestamp).getTime() - toDate(b.timestamp).getTime(),
     );
-  }, [search, levelFilter, timeRangeLabel]);
+  }, [levelFilter, pages, currentPage]);
 
   useEffect(() => {
-    if (isLive && consoleRef.current) {
+    if (isLive && consoleRef.current && filtered.length > 0) {
       consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
     }
   }, [filtered, isLive]);
@@ -143,8 +126,15 @@ export default function RawLogsPage() {
     navigator.clipboard.writeText(text);
   };
 
+  // Chargement initial
+  useEffect(() => {
+    if (pages.length === 0 && !loading) {
+      getMany();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-0">
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -185,35 +175,10 @@ export default function RawLogsPage() {
         </div>
       </div>
 
-      {/* Search + time range */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-60">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-tertiary" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search log id, service, session or message payload..."
-            className="w-full rounded-xs border border-card-border bg-card-background-100 py-2.5 pl-9 pr-3 text-sm text-foreground-100 shadow-xs placeholder:text-input-placeholder-text focus:border-input-primary-focus-border focus:outline-none"
-          />
-        </div>
-
-        <select
-          value={timeRangeLabel}
-          onChange={(e) => setTimeRangeLabel(e.target.value)}
-          className="rounded-xs border border-card-border bg-card-background-100 px-3 py-2.5 text-sm text-foreground-100 shadow-xs focus:outline-none"
-        >
-          {TIME_RANGE_OPTIONS.map((opt) => (
-            <option key={opt.label} value={opt.label}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
       {/* Console */}
       <div
         ref={consoleRef}
-        className="max-h-[65vh] overflow-y-auto rounded-xs border border-card-border bg-sidebar-nav-default-background p-3 font-subtitle text-xs shadow-xs"
+        className="max-h-[62vh] mt-6 overflow-y-auto rounded-xs border border-card-border bg-sidebar-nav-default-background p-3 font-subtitle text-xs shadow-xs"
       >
         {/* Table header */}
         <div className="sticky -top-3 z-10 grid grid-cols-[74px_190px_140px_1fr_20px] gap-3 border-b border-white-100/10 bg-sidebar-nav-default-background px-2 py-2 text-[11px] font-semibold tracking-wide text-white-60">
@@ -301,6 +266,41 @@ export default function RawLogsPage() {
               No log entries match these filters.
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Pagination */}
+      <div className="flex mt-4 flex-wrap items-center justify-between gap-3 rounded-xs border border-card-border bg-card-background-100 p-3 text-sm text-text-secondary shadow-xs">
+        <span>Showing {filtered.length} entries</span>
+        <div className="flex items-center gap-1">
+          <button
+            disabled={currentPage === 1}
+            onClick={() => getPreviousPage()}
+            className="rounded-xs px-2.5 py-1 text-text-secondary hover:bg-background-soft-100 disabled:cursor-not-allowed disabled:text-text-tertiary disabled:hover:bg-transparent"
+          >
+            Prev
+          </button>
+          {Array.from({ length: pages.length }, (_, i) => i + 1).map((n) => (
+            <button
+              key={n}
+              onClick={() => setPage(n)}
+              className={cn(
+                "rounded-xs px-2.5 py-1",
+                n === currentPage
+                  ? "bg-foreground-100 text-white-100"
+                  : "text-text-secondary hover:bg-background-soft-100",
+              )}
+            >
+              {n}
+            </button>
+          ))}
+          <button
+            disabled={hasMore === false}
+            onClick={() => getNextPage()}
+            className="rounded-xs px-2.5 py-1 text-text-secondary hover:bg-background-soft-100 disabled:cursor-not-allowed disabled:text-text-tertiary disabled:hover:bg-transparent"
+          >
+            Next
+          </button>
         </div>
       </div>
     </div>

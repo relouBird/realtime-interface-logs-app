@@ -48,6 +48,9 @@ export function summarizeLogMessage(message: string): string {
   if (/<session-start/.test(trimmed)) {
     return "Nouvelle session TCP ouverte.";
   }
+  if (/<session-end/.test(trimmed)) {
+    return "Session TCP fermée.";
+  }
   if (/<receive>|<send>/.test(trimmed)) {
     const direction = /<receive>/.test(trimmed) ? "reçu" : "envoyé";
     const mti = /<field\s+id="0"\s+value="(\d+)"/.exec(trimmed);

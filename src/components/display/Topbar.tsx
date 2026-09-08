@@ -1,11 +1,5 @@
 // components/display/Topbar.tsx
-import { useState } from "react";
-import {
-  RefreshCcw,
-  Bell,
-  PanelLeftClose,
-  PanelRightClose,
-} from "lucide-react";
+import { RefreshCcw, PanelLeftClose, PanelRightClose } from "lucide-react";
 import { Button } from "../ui/Button";
 import { useDisplayStore } from "@/stores/display.store";
 import { useStore } from "zustand";
@@ -15,9 +9,6 @@ import { SearchBar } from "./SearchBar";
 export function Topbar() {
   // Store
   const { sidebarVisibility, show, close } = useStore(useDisplayStore);
-
-  // Gestionnaire d'état
-  const [notifications] = useState(3);
 
   const handleSearch = (searchQuery: string) => {
     // Logique de recherche ici
@@ -54,21 +45,16 @@ export function Topbar() {
 
           <div className="flex items-center gap-2 border-l pl-3.5 border-card-border">
             {/* Boutons d'action */}
-            <Button variant="ghost" size="xs" iconOnly>
-              <RefreshCcw className="size-4" />
-            </Button>
-
-            {/* Notification */}
             <Button
               variant="ghost"
               size="xs"
+              onClick={(e) => {
+                e.preventDefault();
+                window.location.reload();
+              }}
               iconOnly
-              className="relative grid place-items-center transition-colors focus:ring-0"
             >
-              <Bell className="size-5" />
-              {notifications > 0 && (
-                <span className="absolute top-1 right-1.5 size-2 rounded-full bg-red-500 text-white text-xs flex items-center justify-center"></span>
-              )}
+              <RefreshCcw className="size-4" />
             </Button>
 
             {/* Statut LIVE */}
