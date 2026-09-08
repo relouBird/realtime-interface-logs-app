@@ -13,3 +13,8 @@ export const CRUD_ACTION = {
 } as const;
 
 export type CRUD_ACTION = (typeof CRUD_ACTION)[keyof typeof CRUD_ACTION];
+
+export interface RabbitHealth {
+  status: "ok" | "error";
+  rabbitmq: "connected" | "disconnected";
+}
