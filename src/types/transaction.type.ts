@@ -56,3 +56,8 @@ export interface TransactionRecord {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface RabbitHealth {
+  status: "ok" | "error";
+  rabbitmq: "connected" | "disconnected";
+}

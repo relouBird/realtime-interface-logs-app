@@ -14,6 +14,7 @@ import {
   resolveBankName,
   responseCodeLabel,
 } from "@/utils/iso8583";
+import { useTransactionStore } from "@/stores/transactions.store";
 
 interface LifecycleStep {
   title: string;
@@ -134,9 +135,12 @@ export default function TransactionDetailPage() {
   const { reference } = useParams<{ reference: string }>();
   const navigate = useNavigate();
 
+  // store
+  const findTransaction = useTransactionStore((state) => state.findTransaction);
+
   const transaction = useMemo(
     () => (reference ? findTransaction(reference) : undefined),
-    [reference],
+    [reference, findTransaction],
   );
 
   if (!transaction) {
@@ -149,7 +153,8 @@ export default function TransactionDetailPage() {
           "{reference}" doesn't match any known transaction reference.
         </p>
         <Button
-          variant="ghost"
+          appearance="outline"
+          className="rounded-xs"
           size="sm"
           onClick={() => navigate("/transactions")}
         >

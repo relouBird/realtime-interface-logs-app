@@ -6,12 +6,8 @@ import { format } from "date-fns";
 
 import { cn } from "@/utils/cn";
 import { Button } from "@/components/ui/Button";
-import { findIsoLog } from "@/constants/mock/mockIsoLogs";
-import {
-  parseHexDump,
-  parseRawXmlFields,
-  splitRawMessage,
-} from "@/utils/isoParsing";
+import { parseIsoRawMessage } from "@/utils/isoParsing";
+import { useIsoMsgLogStore } from "@/stores/iso-msg-logs.store";
 
 type PanelView = "structured" | "raw";
 
@@ -21,15 +17,21 @@ export default function IsoMessageDetailPage() {
   const [panel, setPanel] = useState<PanelView>("structured");
   const [hexView, setHexView] = useState<"hex" | "ascii">("hex");
 
-  const entry = useMemo(() => (id ? findIsoLog(Number(id)) : undefined), [id]);
+  // store
+  const findIsoLog = useIsoMsgLogStore((state) => state.findIsoLog);
+
+  const entry = useMemo(
+    () => (id ? findIsoLog(Number(id)) : undefined),
+    [id, findIsoLog],
+  );
 
   const parsed = useMemo(() => {
     if (!entry?.raw) return null;
-    const { xml, hexOctets, hexText } = splitRawMessage(entry.raw);
+    const { fields, hexOctets, hex } = parseIsoRawMessage(entry.raw);
     return {
-      fields: parseRawXmlFields(xml),
+      fields,
       hexOctets,
-      hexLines: parseHexDump(hexText),
+      hexLines: hex,
     };
   }, [entry]);
 
@@ -44,6 +46,7 @@ export default function IsoMessageDetailPage() {
         </p>
         <Button
           appearance="outline"
+          className="rounded-xs"
           size="sm"
           onClick={() => navigate("/iso-messages")}
         >
