@@ -2,7 +2,7 @@
 import { useSeoHead } from "@/composables/useSeoHead";
 
 // routes/TransactionsPage.tsx
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Search, ChevronRight, Download, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
@@ -11,7 +11,6 @@ import { cn } from "@/utils/cn";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/transactions/StatusBadge";
 import { ChannelBadge } from "@/components/transactions/ChannelBadge";
-import { MOCK_TRANSACTIONS } from "@/constants/mock/mockTransactions";
 import type { TransactionRecord } from "@/types/transaction.type";
 import {
   formatAmount,
@@ -19,8 +18,8 @@ import {
   networkFromAcquirer,
   responseCodeLabel,
 } from "@/utils/iso8583";
-
-const PAGE_SIZE = 5;
+import { useTransactionStore } from "@/stores/transactions.store";
+import { Pagination } from "@/components/display/Pagination";
 
 const STATUS_OPTIONS = [
   "All statuses",
@@ -56,43 +55,50 @@ export default function TransactionsPage() {
   const [statusFilter, setStatusFilter] = useState(STATUS_OPTIONS[0]);
   const [mtiFilter, setMtiFilter] = useState(MTI_OPTIONS[0]);
   const [actionFilter, setActionFilter] = useState(ACTION_OPTIONS[0]);
-  const [page, setPage] = useState(1);
+
+  // Store
+  const currentPage = useTransactionStore((state) => state.currentPage);
+  const pages = useTransactionStore((state) => state.pages);
+  const hasMore = useTransactionStore((state) => state.hasMore);
+  const setPage = useTransactionStore((state) => state.goToPage);
+  const getPreviousPage = useTransactionStore((state) => state.getPreviousPage);
+  const getNextPage = useTransactionStore((state) => state.getNextPage);
+
+  const getMany = useTransactionStore((state) => state.getMany);
+  const loading = useTransactionStore((state) => state.loading);
 
   const filtered = useMemo(() => {
+    const currentPayments = pages[currentPage - 1]?.data ?? [];
+
     const query = search.trim().toLowerCase();
 
-    return MOCK_TRANSACTIONS.filter((tx) => {
-      const matchesQuery =
-        query.length === 0 ||
-        tx.correlationId.toLowerCase().includes(query) ||
-        tx.retrievalReferenceNumber.toLowerCase().includes(query) ||
-        tx.request.pan.toLowerCase().includes(query) ||
-        cleanMerchantName(tx.request.merchantName)
-          .toLowerCase()
-          .includes(query);
+    return currentPayments
+      .filter((tx) => {
+        const matchesQuery =
+          query.length === 0 ||
+          tx.correlationId.toLowerCase().includes(query) ||
+          tx.retrievalReferenceNumber.toLowerCase().includes(query) ||
+          tx.request.pan.toLowerCase().includes(query) ||
+          cleanMerchantName(tx.request.merchantName)
+            .toLowerCase()
+            .includes(query);
 
-      const matchesStatus =
-        statusFilter === STATUS_OPTIONS[0] ||
-        tx.status.toUpperCase() === statusFilter.toUpperCase();
+        const matchesStatus =
+          statusFilter === STATUS_OPTIONS[0] ||
+          tx.status.toUpperCase() === statusFilter.toUpperCase();
 
-      const matchesMti = mtiFilter === MTI_OPTIONS[0] || tx.mti === mtiFilter;
+        const matchesMti = mtiFilter === MTI_OPTIONS[0] || tx.mti === mtiFilter;
 
-      const matchesAction =
-        actionFilter === ACTION_OPTIONS[0] || tx.action === actionFilter;
+        const matchesAction =
+          actionFilter === ACTION_OPTIONS[0] || tx.action === actionFilter;
 
-      return matchesQuery && matchesStatus && matchesMti && matchesAction;
-    }).sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
-  }, [search, statusFilter, mtiFilter, actionFilter]);
-
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const currentPage = Math.min(page, pageCount);
-  const pageItems = filtered.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE,
-  );
+        return matchesQuery && matchesStatus && matchesMti && matchesAction;
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+  }, [search, statusFilter, mtiFilter, actionFilter, pages, currentPage]);
 
   const updateFilter = (setter: (v: string) => void, value: string) => {
     setter(value);
@@ -102,6 +108,24 @@ export default function TransactionsPage() {
   const goToDetail = (tx: TransactionRecord) => {
     navigate(`/transactions/${tx.correlationId}`);
   };
+
+  // Chargement initial
+  useEffect(() => {
+    // fonction asynchrone pour récupérer toutes les transactions
+    async function getAllTransactions() {
+      try {
+        await getMany();
+      } catch (error) {
+        console.log("Error :", error);
+      }
+    }
+
+    // si aucune page n'est chargée et que le chargement n'est pas en cours, on récupère toutes les transactions
+    if (pages.length === 0 && !loading) {
+      getAllTransactions();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="flex flex-col gap-6">
@@ -198,7 +222,7 @@ export default function TransactionsPage() {
               </tr>
             </thead>
             <tbody>
-              {pageItems.map((tx) => (
+              {filtered.map((tx) => (
                 <tr
                   key={tx.correlationId}
                   onClick={() => goToDetail(tx)}
@@ -264,7 +288,7 @@ export default function TransactionsPage() {
                 </tr>
               ))}
 
-              {pageItems.length === 0 && (
+              {filtered.length === 0 && (
                 <tr>
                   <td
                     colSpan={9}
@@ -279,45 +303,16 @@ export default function TransactionsPage() {
         </div>
 
         {/* Pagination */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-card-border p-4 text-sm text-text-secondary">
-          <span>
-            Showing{" "}
-            {pageItems.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} to{" "}
-            {(currentPage - 1) * PAGE_SIZE + pageItems.length} of{" "}
-            {filtered.length} entries
-          </span>
-
-          <div className="flex items-center gap-1">
-            <button
-              disabled={currentPage === 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="rounded-xs px-2.5 py-1 text-text-secondary hover:bg-background-soft-100 disabled:cursor-not-allowed disabled:text-text-tertiary disabled:hover:bg-transparent"
-            >
-              Prev
-            </button>
-            {Array.from({ length: pageCount }, (_, i) => i + 1).map((n) => (
-              <button
-                key={n}
-                onClick={() => setPage(n)}
-                className={cn(
-                  "rounded-xs px-2.5 py-1",
-                  n === currentPage
-                    ? "bg-foreground-100 text-white-100"
-                    : "text-text-secondary hover:bg-background-soft-100",
-                )}
-              >
-                {n}
-              </button>
-            ))}
-            <button
-              disabled={currentPage === pageCount}
-              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-              className="rounded-xs px-2.5 py-1 text-text-secondary hover:bg-background-soft-100 disabled:cursor-not-allowed disabled:text-text-tertiary disabled:hover:bg-transparent"
-            >
-              Next
-            </button>
-          </div>
-        </div>
+        <Pagination
+          variant="inset"
+          currentPage={currentPage}
+          pageCount={pages.length}
+          entryCount={filtered.length}
+          hasMore={hasMore}
+          onPrevious={getPreviousPage}
+          onNext={getNextPage}
+          onSelectPage={setPage}
+        />
       </div>
     </div>
   );

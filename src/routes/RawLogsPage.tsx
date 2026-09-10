@@ -14,6 +14,7 @@ import {
 } from "@/utils/logParsing";
 import { dateFormat } from "@/helpers";
 import { useRawLogStore } from "@/stores/raw-logs.store";
+import { Pagination } from "@/components/display/Pagination";
 
 const LEVEL_OPTIONS = ["All Levels", "INFO", "WARN", "ERROR", "DEBUG"];
 
@@ -270,39 +271,17 @@ export default function RawLogsPage() {
       </div>
 
       {/* Pagination */}
-      <div className="flex mt-4 flex-wrap items-center justify-between gap-3 rounded-xs border border-card-border bg-card-background-100 p-3 text-sm text-text-secondary shadow-xs">
-        <span>Showing {filtered.length} entries</span>
-        <div className="flex items-center gap-1">
-          <button
-            disabled={currentPage === 1}
-            onClick={() => getPreviousPage()}
-            className="rounded-xs px-2.5 py-1 text-text-secondary hover:bg-background-soft-100 disabled:cursor-not-allowed disabled:text-text-tertiary disabled:hover:bg-transparent"
-          >
-            Prev
-          </button>
-          {Array.from({ length: pages.length }, (_, i) => i + 1).map((n) => (
-            <button
-              key={n}
-              onClick={() => setPage(n)}
-              className={cn(
-                "rounded-xs px-2.5 py-1",
-                n === currentPage
-                  ? "bg-foreground-100 text-white-100"
-                  : "text-text-secondary hover:bg-background-soft-100",
-              )}
-            >
-              {n}
-            </button>
-          ))}
-          <button
-            disabled={hasMore === false}
-            onClick={() => getNextPage()}
-            className="rounded-xs px-2.5 py-1 text-text-secondary hover:bg-background-soft-100 disabled:cursor-not-allowed disabled:text-text-tertiary disabled:hover:bg-transparent"
-          >
-            Next
-          </button>
-        </div>
-      </div>
+      <Pagination
+        variant="card"
+        className="mt-4 p-3"
+        currentPage={currentPage}
+        pageCount={pages.length}
+        entryCount={filtered.length}
+        hasMore={hasMore}
+        onPrevious={getPreviousPage}
+        onNext={getNextPage}
+        onSelectPage={setPage}
+      />
     </div>
   );
 }

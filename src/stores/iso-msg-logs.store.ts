@@ -23,6 +23,7 @@ type IsoMsgLogStoreActions = {
   getNextPage: () => Promise<void>;
   getPreviousPage: () => void;
   goToPage: (page: number) => void;
+  findIsoLog: (id: number) => IsoLogEntry | undefined;
 };
 
 export const useIsoMsgLogStore = create<
@@ -157,5 +158,17 @@ export const useIsoMsgLogStore = create<
     set({
       currentPage: page,
     });
+  },
+
+  findIsoLog(id: number) {
+    const { pages } = get();
+
+    for (const page of pages) {
+      const found = page.data.find((log) => log.id === id);
+      if (found) {
+        return found;
+      }
+    }
+    return undefined;
   },
 }));
