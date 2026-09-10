@@ -60,4 +60,25 @@ export interface TransactionRecord {
 export interface RabbitHealth {
   status: "ok" | "error";
   rabbitmq: "connected" | "disconnected";
+  gbApi: "connected" | "disconnected";
+}
+
+export interface TransactionSummary {
+  /** Nb de transactions financières créées aujourd'hui (UTC). */
+  totalToday: number;
+  /** Nb de transactions financières créées hier (UTC), pour la comparaison. */
+  totalYesterday: number;
+  /** Variation en % vs hier. `null` si hier = 0 (division par zéro évitée). */
+  totalTodayChangePct: number | null;
+  /** Nb de transactions financières des dernières 24h glissantes. */
+  total24h: number;
+  /** % de succès sur les transactions financières terminées des dernières 24h. `null` si aucune transaction terminée. */
+  successRate24h: number | null;
+  /** Nb de transactions financières pas encore dans un statut terminal. */
+  activeProcessing: number;
+  /** Parmi les actives, celles en attente depuis plus de `delayThresholdMs`. */
+  delayedInQueue: number;
+  /** Débit approximatif sur la fenêtre `opsWindowMs` (transactions/sec). */
+  opsPerSecond: number;
+  generatedAt: string;
 }

@@ -1,7 +1,11 @@
 import { create } from "zustand";
 import type { AxiosResponse } from "axios";
 import transactionService from "@/services/transaction.service";
-import type { TransactionRecord, RabbitHealth } from "@/types/transaction.type";
+import type {
+  TransactionRecord,
+  RabbitHealth,
+  TransactionSummary,
+} from "@/types/transaction.type";
 
 type TransactionDetailPage = {
   data: TransactionRecord[];
@@ -13,6 +17,7 @@ type TransactionStoreState = {
   currentPage: number;
   hasMore: boolean;
 
+  summary: TransactionSummary | null;
   newLogs: TransactionRecord[];
 
   selectedResponse: TransactionRecord | null;
@@ -31,6 +36,7 @@ type TransactionStoreActions = {
   goToPage: (page: number) => void;
 
   fetchHealth: () => Promise<void>;
+  fetchSummary: () => Promise<void>;
 
   findTransaction: (correlationId: string) => TransactionRecord | undefined;
   setSelectedResponse: (record: TransactionRecord | null) => void;
@@ -42,6 +48,8 @@ export const useTransactionStore = create<
   pages: [],
   currentPage: 1,
   hasMore: false,
+
+  summary: null,
   newLogs: [],
   selectedResponse: null,
 
@@ -192,6 +200,19 @@ export const useTransactionStore = create<
     set({
       currentPage: page,
     });
+  },
+
+  fetchSummary: async () => {
+    try {
+      const service = transactionService();
+      const response = await service.fetchSummary();
+
+      if (response.status === 200) {
+        set({ summary: response.data.data });
+      }
+    } catch (error) {
+      console.error("Failed to fetch transaction summary:", error);
+    }
   },
 
   fetchHealth: async () => {

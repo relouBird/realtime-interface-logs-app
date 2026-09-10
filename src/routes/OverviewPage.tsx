@@ -1,11 +1,12 @@
 // routes/OverviewPage.tsx
 import { useSeoHead } from "@/composables/useSeoHead";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Newspaper,
   CheckCircle2,
   RefreshCw,
   TrendingUp,
+  TrendingDown,
   Info,
   AlertTriangle,
   ChevronDown,
@@ -17,9 +18,32 @@ import {
 
 import { cn } from "@/utils/cn";
 import { Button } from "@/components/ui/Button";
-import { OPERATIONS, INCOMING_OPERATION } from "@/constants/mock/operation";
 import { StatusBadge } from "@/components/transactions/StatusBadge";
 import { ChannelBadge } from "@/components/transactions/ChannelBadge";
+import { useTransactionStore } from "@/stores/transactions.store";
+import { Pagination } from "@/components/display/Pagination";
+import { formatAmount } from "@/utils/iso8583";
+
+/* -------------------------------------------------------------------------- */
+/*  Formatting helpers — centralise the null-handling so the JSX below stays  */
+/*  readable. `summary` is `TransactionSummary | null` (null while loading or */
+/*  if the fetch failed) — never fabricate a fallback number, show a dash.    */
+/* -------------------------------------------------------------------------- */
+
+function formatCount(value: number | null | undefined): string {
+  if (value == null) return "—";
+  return new Intl.NumberFormat("en-US").format(value);
+}
+
+function formatPercent(value: number | null | undefined, decimals = 1): string {
+  if (value == null) return "—";
+  return `${value.toFixed(decimals)}%`;
+}
+
+function formatOpsPerSecond(value: number | null | undefined): string {
+  if (value == null) return "—";
+  return value.toLocaleString("en-US", { maximumFractionDigits: 1 });
+}
 
 /* -------------------------------------------------------------------------- */
 /*  Small presentational helpers                                              */
@@ -61,6 +85,72 @@ function FilterSelect({ label }: { label: string }) {
   );
 }
 
+/** Footer for the "Total Transactions Today" card: no data for yesterday yet
+ * (division by zero avoided server-side → `null`) vs. an actual up/down %. */
+function TodayTrendFooter({
+  changePct,
+}: {
+  changePct: number | null | undefined;
+}) {
+  if (changePct == null) {
+    return (
+      <span className="flex items-center gap-1 text-text-tertiary">
+        <Info className="size-3.5" />
+        No data for yesterday yet
+      </span>
+    );
+  }
+
+  const isUp = changePct >= 0;
+  const Icon = isUp ? TrendingUp : TrendingDown;
+
+  return (
+    <span
+      className={cn(
+        "flex items-center gap-1",
+        isUp ? "text-success-600" : "text-error-600",
+      )}
+    >
+      <Icon className="size-3.5" />
+      {isUp ? "+" : ""}
+      {changePct.toFixed(1)}% vs yesterday
+    </span>
+  );
+}
+
+/** Footer for the "Active Processing" card: only warn when something is
+ * actually delayed — don't claim "no delays" while summary is still null. */
+function ProcessingFooter({
+  summary,
+}: {
+  summary: { delayedInQueue: number } | null | undefined;
+}) {
+  if (!summary) {
+    return (
+      <span className="flex items-center gap-1 text-text-tertiary">
+        <Info className="size-3.5" />
+        Loading queue status...
+      </span>
+    );
+  }
+
+  if (summary.delayedInQueue > 0) {
+    return (
+      <span className="flex items-center gap-1 text-warning-600">
+        <AlertTriangle className="size-3.5" />
+        {summary.delayedInQueue} delayed in queue
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex items-center gap-1 text-success-600">
+      <CheckCircle2 className="size-3.5" />
+      No delays
+    </span>
+  );
+}
+
 /* -------------------------------------------------------------------------- */
 /*  Page                                                                      */
 /* -------------------------------------------------------------------------- */
@@ -72,14 +162,46 @@ export default function OverviewPage() {
     forcePrefix: true,
   });
 
-  const [operations, setOperations] = useState(OPERATIONS);
+  // store
+  const summary = useTransactionStore((state) => state.summary);
+  const fetchSummary = useTransactionStore((state) => state.fetchSummary);
+  const currentPage = useTransactionStore((state) => state.currentPage);
+  const pages = useTransactionStore((state) => state.pages);
+  const hasMore = useTransactionStore((state) => state.hasMore);
+  const setPage = useTransactionStore((state) => state.goToPage);
+  const getPreviousPage = useTransactionStore((state) => state.getPreviousPage);
+  const getNextPage = useTransactionStore((state) => state.getNextPage);
+
+  const getMany = useTransactionStore((state) => state.getMany);
+  const loading = useTransactionStore((state) => state.loading);
+
+  const filtered = useMemo(() => {
+    const currentPayments = pages[currentPage - 1]?.data ?? [];
+    return currentPayments;
+  }, [currentPage, pages]);
+
   const [showIncomingPrompt, setShowIncomingPrompt] = useState(true);
-  const [page] = useState(1);
 
   const revealIncoming = () => {
-    setOperations((prev) => [INCOMING_OPERATION, ...prev]);
     setShowIncomingPrompt(false);
   };
+
+  useEffect(() => {
+    async function getAllData() {
+      try {
+        await getMany();
+        await fetchSummary();
+      } catch (error) {
+        console.error("Failed to fetch transaction summary:", error);
+      }
+    }
+
+    // si aucune page n'est chargée et que le chargement n'est pas en cours, on récupère toutes les transactions
+    if (pages.length === 0 && !loading) {
+      getAllData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="flex flex-col gap-6">
@@ -87,18 +209,13 @@ export default function OverviewPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <KpiCard
           label="TOTAL TRANSACTIONS TODAY"
-          value="84,209"
+          value={formatCount(summary?.totalToday)}
           icon={Newspaper}
-          footer={
-            <span className="flex items-center gap-1 text-success-600">
-              <TrendingUp className="size-3.5" />
-              +12.4% vs yesterday
-            </span>
-          }
+          footer={<TodayTrendFooter changePct={summary?.totalTodayChangePct} />}
         />
         <KpiCard
           label="SUCCESS RATE"
-          value="99.8%"
+          value={formatPercent(summary?.successRate24h)}
           icon={CheckCircle2}
           footer={
             <span className="flex items-center gap-1">
@@ -109,14 +226,9 @@ export default function OverviewPage() {
         />
         <KpiCard
           label="ACTIVE PROCESSING"
-          value="1,432"
+          value={formatCount(summary?.activeProcessing)}
           icon={RefreshCw}
-          footer={
-            <span className="flex items-center gap-1 text-warning-600">
-              <AlertTriangle className="size-3.5" />
-              42 delayed in queue
-            </span>
-          }
+          footer={<ProcessingFooter summary={summary} />}
         />
       </div>
 
@@ -137,8 +249,12 @@ export default function OverviewPage() {
               TOTAL TRANSACTIONS (24H)
             </p>
             <p className="mt-0.5 text-sm font-semibold text-foreground-100">
-              <span className="font-subtitle">1,248,932</span>{" "}
-              <span className="text-success-600">↑2.4%</span>
+              {/* Pas de % de variation ici : le backend renvoie totalTodayChangePct
+                  (aujourd'hui vs hier), pas d'équivalent pour la fenêtre 24h
+                  glissante. TODO backend si on veut ce delta un jour. */}
+              <span className="font-subtitle">
+                {formatCount(summary?.total24h)}
+              </span>
             </p>
           </div>
           <div className="text-right">
@@ -146,8 +262,9 @@ export default function OverviewPage() {
               SUCCESS RATE
             </p>
             <p className="mt-0.5 text-sm font-semibold text-foreground-100">
-              <span className="font-subtitle">99.8%</span>{" "}
-              <span className="text-text-secondary">Stable</span>
+              <span className="font-subtitle">
+                {formatPercent(summary?.successRate24h)}
+              </span>
             </p>
           </div>
           <div className="text-right">
@@ -155,7 +272,9 @@ export default function OverviewPage() {
               ACTIVE PROCESSING
             </p>
             <p className="mt-0.5 text-sm font-semibold text-foreground-100">
-              <span className="font-subtitle">84</span>{" "}
+              <span className="font-subtitle">
+                {formatOpsPerSecond(summary?.opsPerSecond)}
+              </span>{" "}
               <span className="text-text-secondary">Ops/sec</span>
             </p>
           </div>
@@ -210,77 +329,70 @@ export default function OverviewPage() {
               </tr>
             </thead>
             <tbody>
-              {operations.map((op) => (
-                <tr
-                  key={op.reference}
-                  className="border-b border-card-border last:border-0 hover:bg-background-soft-50"
-                >
-                  <td className="whitespace-nowrap px-4 py-3 font-subtitle text-xs text-text-secondary">
-                    {op.timestamp}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 font-subtitle text-xs text-foreground-100 underline decoration-card-border underline-offset-2">
-                    {op.reference}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-foreground-100">
-                    {op.type}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <ChannelBadge channel={op.channel} />
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right font-subtitle text-foreground-100">
-                    {op.amount && (
-                      <>
-                        {op.amount}{" "}
-                        <span className="text-text-tertiary">
-                          {op.currency}
-                        </span>
-                      </>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <StatusBadge status={op.status} />
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button className="text-text-tertiary hover:text-text-color">
-                      <MoreVertical className="size-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {filtered.map((op) => {
+                const reference =
+                  op.request.terminalCode + "." + op.request.stan;
+                return (
+                  <tr
+                    key={reference}
+                    className="border-b border-card-border last:border-0 hover:bg-background-soft-50"
+                  >
+                    <td className="whitespace-nowrap px-4 py-3 font-subtitle text-xs text-text-secondary">
+                      {op.createdAt}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 font-subtitle text-xs text-foreground-100 underline decoration-card-border underline-offset-2">
+                      {reference}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-foreground-100">
+                      {op.status}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <ChannelBadge
+                        channel={op.request.merchantName ?? "GIM"}
+                      />
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right font-subtitle text-foreground-100">
+                      {op.request.transactionAmount ? (
+                        <>
+                          {formatAmount(
+                            op.request.transactionAmount,
+                            op.request.transactionCurrency,
+                          )}
+                          <span className="text-text-tertiary">
+                            {op.request.billingCurrency}
+                          </span>
+                        </>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <StatusBadge status={op.status} />
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button className="text-text-tertiary hover:text-text-color">
+                        <MoreVertical className="size-4" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
 
         {/* Pagination footer */}
-        <div className="border border-t-0 bg-background-soft-10 border-card-border flex flex-wrap items-center justify-between gap-3 p-4 text-sm text-text-secondary">
-          <span>Showing 1 to {operations.length} of 84,209 entries</span>
-
-          <div className="flex items-center gap-1">
-            <button
-              disabled
-              className="rounded-xs px-2.5 py-1 text-text-tertiary disabled:cursor-not-allowed"
-            >
-              Prev
-            </button>
-            {[1, 2, 3].map((n) => (
-              <button
-                key={n}
-                className={cn(
-                  "rounded-xs px-2.5 py-1",
-                  n === page
-                    ? "bg-foreground-100 text-white-100"
-                    : "text-text-secondary hover:bg-background-soft-100",
-                )}
-              >
-                {n}
-              </button>
-            ))}
-            <span className="px-1 text-text-tertiary">...</span>
-            <button className="rounded-xs px-2.5 py-1 text-text-secondary hover:bg-background-soft-100">
-              Next
-            </button>
-          </div>
-        </div>
+        <Pagination
+          variant="inset"
+          className="bg-background-soft-10 border border-t-0 border-card-border"
+          currentPage={currentPage}
+          pageCount={pages.length}
+          entryCount={filtered.length}
+          hasMore={hasMore}
+          onPrevious={getPreviousPage}
+          onNext={getNextPage}
+          onSelectPage={setPage}
+        />
       </div>
     </div>
   );
