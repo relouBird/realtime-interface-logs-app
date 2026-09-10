@@ -6,7 +6,6 @@ import { format } from "date-fns";
 
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/transactions/StatusBadge";
-import { findTransaction } from "@/constants/mock/mockTransactions";
 import {
   durationMs,
   formatAmount,
@@ -15,6 +14,7 @@ import {
   responseCodeLabel,
 } from "@/utils/iso8583";
 import { useTransactionStore } from "@/stores/transactions.store";
+import type { TransactionRecord } from "@/types/transaction.type";
 
 interface LifecycleStep {
   title: string;
@@ -30,9 +30,7 @@ interface LifecycleStep {
  * shape below (title/description/timestamp/tone) is what <ExecutionLifecycle>
  * expects, so the JSX won't need to change.
  */
-function buildLifecycle(
-  tx: NonNullable<ReturnType<typeof findTransaction>>,
-): LifecycleStep[] {
+function buildLifecycle(tx: TransactionRecord): LifecycleStep[] {
   const start = new Date(tx.createdAt).getTime();
   const end = new Date(tx.updatedAt).getTime();
   const span = Math.max(end - start, 40);

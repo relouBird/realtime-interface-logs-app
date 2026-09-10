@@ -1,6 +1,10 @@
 import type { AxiosResponse } from "axios";
 import { request } from "@/helpers/request.helper";
-import type { TransactionRecord, RabbitHealth } from "@/types/transaction.type";
+import type {
+  TransactionRecord,
+  RabbitHealth,
+  TransactionSummary,
+} from "@/types/transaction.type";
 
 // Interfaces de Bases
 interface LogsParams {
@@ -24,16 +28,20 @@ interface ResponseFormSingleData<T> {
  * Typage dédié au service transaction (données non génériques, cf. §2 et §2.6 de la doc API).
  */
 export type TransactionServiceProps = {
-  /** GET /api/transaction/responses */
+  /** GET /api/payment/transactions */
   fetchResponses: (
     params: LogsParams,
   ) => Promise<AxiosResponse<ResponseFormData<TransactionRecord>>>;
-  /** GET /api/transaction/responses/:correlationId */
+  /** GET /api/payment/transactions/:correlationId */
   fetchResponseById: (
     correlationId: string,
   ) => Promise<AxiosResponse<ResponseFormSingleData<TransactionRecord>>>;
-  /** GET /api/transaction/health */
+  /** GET /api/payment/health */
   fetchHealth: () => Promise<AxiosResponse<RabbitHealth>>;
+  /** GET /api/payment/transactions/summary */
+  fetchSummary: () => Promise<
+    AxiosResponse<ResponseFormSingleData<TransactionSummary>>
+  >;
 };
 
 export default function transactionService(): TransactionServiceProps {
@@ -53,6 +61,12 @@ export default function transactionService(): TransactionServiceProps {
     });
   };
 
+  const fetchSummary = async () => {
+    return await request(`/payment/transactions/summary`, {
+      method: "get",
+    });
+  };
+
   const fetchHealth = async () => {
     return await request(`/payment/health`, {
       method: "get",
@@ -63,5 +77,6 @@ export default function transactionService(): TransactionServiceProps {
     fetchResponses,
     fetchResponseById,
     fetchHealth,
+    fetchSummary,
   };
 }
