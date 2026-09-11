@@ -15,6 +15,7 @@ type TransactionDetailPage = {
 type TransactionStoreState = {
   pages: TransactionDetailPage[];
   currentPage: number;
+  filter: boolean;
   hasMore: boolean;
 
   summary: TransactionSummary | null;
@@ -22,10 +23,18 @@ type TransactionStoreState = {
 
   selectedResponse: TransactionRecord | null;
 
-  initialized: boolean;
   loading: boolean;
 
   health: RabbitHealth | null;
+
+  /** true = la page 1 se rafraîchit automatiquement toutes les 10s. Passe à
+   * false dès qu'on navigue au-delà de la page 1 ; revient à true seulement
+   * via revealNewTransactions() (bouton "N nouvelles opérations" / refresh). */
+  live: boolean;
+  /** Nb de transactions financières arrivées depuis le haut de la page 1
+   * actuellement affichée — calculé côté serveur, mis à jour uniquement
+   * quand `live` est false (sinon la page 1 se met déjà à jour toute seule). */
+  pendingNewCount: number;
 };
 
 type TransactionStoreActions = {
@@ -39,209 +48,326 @@ type TransactionStoreActions = {
   fetchSummary: () => Promise<void>;
 
   findTransaction: (correlationId: string) => TransactionRecord | undefined;
+  setFilterState: (state: boolean) => void;
   setSelectedResponse: (record: TransactionRecord | null) => void;
+
+  /** Démarre le poll de 10s (idempotent — sûr à appeler depuis plusieurs
+   * pages montées en même temps, ex: Overview + Transactions). */
+  startPolling: () => void;
+  /** Arrête le poll (à appeler au démontage de la page). */
+  stopPolling: () => void;
+  /** Réaffiche les nouvelles transactions accumulées : repasse en live,
+   * revient page 1, force un refresh immédiat. */
+  revealNewTransactions: () => Promise<void>;
 };
+
+// Handle d'intervalle en dehors du state Zustand — ce n'est pas une donnée
+// réactive, et ça permet à startPolling/stopPolling d'être appelés depuis
+// plusieurs composants montés simultanément sans dupliquer le timer.
+let pollHandle: ReturnType<typeof setInterval> | null = null;
+let pollInFlight = false;
+
+const POLL_INTERVAL_MS = 10_000;
 
 export const useTransactionStore = create<
   TransactionStoreState & TransactionStoreActions
->((set, get) => ({
-  pages: [],
-  currentPage: 1,
-  hasMore: false,
+>((set, get) => {
+  async function pollTick() {
+    if (pollInFlight) return; // évite un chevauchement si un tick précédent traîne
+    pollInFlight = true;
 
-  summary: null,
-  newLogs: [],
-  selectedResponse: null,
-
-  initialized: false,
-  loading: false,
-
-  health: null,
-
-  getMany: async () => {
     try {
-      const { initialized, loading } = get();
-      if (initialized || loading) return; // déjà chargé ou en cours
-
-      set({ loading: true });
-
+      const { live, pages, filter } = get();
       const service = transactionService();
-      const response = await service.fetchResponses({
-        limit: 50,
-      });
 
-      if (response.status !== 200) {
+      if (live) {
+        // Live : on remplace silencieusement la page 1 par les données
+        // fraîches, sans passer par `loading` (pas de flash d'UI toutes les
+        // 10s).
+        const response = await service.fetchResponses({
+          filter,
+          limit: 50,
+        });
+        if (response.status !== 200) return;
+
+        const raw = response.data;
+        set({
+          pages: [{ data: raw.data, nextCursor: raw.nextCursor }],
+          currentPage: 1,
+          hasMore: raw.hasMore,
+          pendingNewCount: 0,
+        });
         return;
       }
 
-      const responseRaw = response.data;
+      // Pas en live (l'utilisateur navigue au-delà de la page 1) : on ne
+      // touche plus à l'affichage, on se contente de compter combien de
+      // nouvelles transactions sont arrivées depuis le haut de la page 1
+      // figée.
+      const top = pages[0]?.data[0];
+      if (!top) return;
 
-      const firstPage: TransactionDetailPage = {
-        data: responseRaw.data,
-        nextCursor: responseRaw.nextCursor,
-      };
+      const response = await service.fetchNewCount({
+        afterId: top.correlationId,
+        afterTimestamp: top.createdAt,
+        filter,
+      });
+
+      if (response.status === 200) {
+        set({ pendingNewCount: response.data.data.count });
+      }
+    } catch (error) {
+      console.error("Transaction polling tick failed:", error);
+    } finally {
+      pollInFlight = false;
+    }
+  }
+
+  return {
+    pages: [],
+    currentPage: 1,
+    filter: false,
+    hasMore: false,
+
+    summary: null,
+    newLogs: [],
+    selectedResponse: null,
+
+    loading: false,
+
+    health: null,
+
+    live: true,
+    pendingNewCount: 0,
+
+    getMany: async () => {
+      try {
+        const { loading } = get();
+        if (loading) return; // déjà chargé ou en cours
+
+        set({ loading: true });
+
+        const service = transactionService();
+        const response = await service.fetchResponses({
+          filter: get().filter,
+          limit: 50,
+        });
+
+        if (response.status !== 200) {
+          return;
+        }
+
+        const responseRaw = response.data;
+
+        const firstPage: TransactionDetailPage = {
+          data: responseRaw.data,
+          nextCursor: responseRaw.nextCursor,
+        };
+
+        set({
+          pages: [firstPage],
+          currentPage: 1,
+          hasMore: responseRaw.hasMore,
+          // Chargement frais = nouvelle session de suivi live.
+          live: true,
+          pendingNewCount: 0,
+        });
+      } catch (error) {
+        console.error("Failed to fetch transaction responses:", error);
+        throw error;
+      } finally {
+        set({ loading: false });
+      }
+    },
+
+    getOneByCorrelationId: async (correlationId: string) => {
+      try {
+        const { loading } = get();
+        if (loading) return; // déjà chargé ou en cours
+
+        set({ loading: true });
+
+        const service = transactionService();
+        const response = await service.fetchResponseById(correlationId);
+
+        if (response.status !== 200) {
+          return;
+        }
+
+        set({ selectedResponse: response.data.data });
+      } catch (error) {
+        console.error("Failed to fetch transaction response:", error);
+        throw error;
+      } finally {
+        set({ loading: false });
+      }
+    },
+
+    async getNextPage() {
+      const { currentPage, pages, hasMore, loading } = get();
+
+      // Rien à charger
+      if (!hasMore) {
+        return;
+      }
+
+      // Évite deux requêtes simultanées
+      if (loading) {
+        return;
+      }
+
+      // La page actuelle
+      const currentPageData = pages[currentPage - 1];
+
+      if (!currentPageData) {
+        return;
+      }
+
+      const cursor = currentPageData.nextCursor;
+
+      if (!cursor) {
+        return;
+      }
+
+      try {
+        set({ loading: true });
+
+        const service = transactionService();
+
+        const response = await service.fetchResponses({
+          cursor,
+          filter: get().filter,
+          limit: 50,
+        });
+
+        if (response.status !== 200) {
+          return;
+        }
+
+        const responseRaw = response.data;
+
+        const nextPage: TransactionDetailPage = {
+          data: responseRaw.data,
+          nextCursor: responseRaw.nextCursor,
+        };
+
+        set({
+          pages: [...pages, nextPage],
+          currentPage: currentPage + 1,
+          hasMore: responseRaw.hasMore,
+          // On quitte la page 1 : plus de rafraîchissement auto tant qu'on
+          // n'a pas explicitement redemandé le live.
+          live: false,
+        });
+      } catch (error) {
+        console.error("Failed to fetch next raw logs:", error);
+        throw error;
+      } finally {
+        set({ loading: false });
+      }
+    },
+
+    getPreviousPage() {
+      const { currentPage, live } = get();
+
+      if (currentPage <= 1) {
+        return;
+      }
+
+      const target = currentPage - 1;
 
       set({
-        pages: [firstPage],
-        currentPage: 1,
-        hasMore: responseRaw.hasMore,
-        initialized: true,
+        currentPage: target,
+        // Ne réactive jamais le live tout seul en revenant page 1 — seul
+        // revealNewTransactions() le fait explicitement.
+        live: target === 1 ? live : false,
       });
-    } catch (error) {
-      console.error("Failed to fetch transaction responses:", error);
-      throw error;
-    } finally {
-      set({ loading: false });
-    }
-  },
+    },
 
-  getOneByCorrelationId: async (correlationId: string) => {
-    try {
+    goToPage(page) {
+      const { pages, live } = get();
+
+      if (page < 1 || page > pages.length) {
+        return;
+      }
+
+      set({
+        currentPage: page,
+        live: page === 1 ? live : false,
+      });
+    },
+
+    fetchSummary: async () => {
       const { loading } = get();
       if (loading) return; // déjà chargé ou en cours
 
       set({ loading: true });
 
-      const service = transactionService();
-      const response = await service.fetchResponseById(correlationId);
+      try {
+        const service = transactionService();
+        const response = await service.fetchSummary();
 
-      if (response.status !== 200) {
-        return;
+        if (response.status === 200) {
+          set({ summary: response.data.data });
+        }
+      } catch (error) {
+        console.error("Failed to fetch transaction summary:", error);
+      } finally {
+        set({ loading: false });
       }
+    },
 
-      set({ selectedResponse: response.data.data });
-    } catch (error) {
-      console.error("Failed to fetch transaction response:", error);
-      throw error;
-    } finally {
-      set({ loading: false });
-    }
-  },
+    fetchHealth: async () => {
+      try {
+        const service = transactionService();
+        const response: AxiosResponse<RabbitHealth> =
+          await service.fetchHealth();
 
-  async getNextPage() {
-    const { currentPage, pages, hasMore, loading } = get();
-
-    // Rien à charger
-    if (!hasMore) {
-      return;
-    }
-
-    // Évite deux requêtes simultanées
-    if (loading) {
-      return;
-    }
-
-    // La page actuelle
-    const currentPageData = pages[currentPage - 1];
-
-    if (!currentPageData) {
-      return;
-    }
-
-    const cursor = currentPageData.nextCursor;
-
-    if (!cursor) {
-      return;
-    }
-
-    try {
-      set({ loading: true });
-
-      const service = transactionService();
-
-      const response = await service.fetchResponses({
-        cursor,
-        limit: 50,
-      });
-
-      if (response.status !== 200) {
-        return;
+        if (response.status === 200) {
+          set({ health: response.data });
+        }
+      } catch (error) {
+        console.error("Failed to fetch rabbitmq health:", error);
+        throw error;
       }
+    },
 
-      const responseRaw = response.data;
+    findTransaction: (correlationId: string) => {
+      const { pages } = get();
 
-      const nextPage: TransactionDetailPage = {
-        data: responseRaw.data,
-        nextCursor: responseRaw.nextCursor,
-      };
-
-      set({
-        pages: [...pages, nextPage],
-        currentPage: currentPage + 1,
-        hasMore: responseRaw.hasMore,
-      });
-    } catch (error) {
-      console.error("Failed to fetch next raw logs:", error);
-      throw error;
-    } finally {
-      set({ loading: false });
-    }
-  },
-
-  getPreviousPage() {
-    const { currentPage } = get();
-
-    if (currentPage <= 1) {
-      return;
-    }
-
-    set({
-      currentPage: currentPage - 1,
-    });
-  },
-
-  goToPage(page) {
-    const { pages } = get();
-
-    if (page < 1 || page > pages.length) {
-      return;
-    }
-
-    set({
-      currentPage: page,
-    });
-  },
-
-  fetchSummary: async () => {
-    try {
-      const service = transactionService();
-      const response = await service.fetchSummary();
-
-      if (response.status === 200) {
-        set({ summary: response.data.data });
+      for (const page of pages) {
+        const found = page.data.find(
+          (transaction) => transaction.correlationId === correlationId,
+        );
+        if (found) {
+          return found;
+        }
       }
-    } catch (error) {
-      console.error("Failed to fetch transaction summary:", error);
-    }
-  },
+      return undefined;
+    },
 
-  fetchHealth: async () => {
-    try {
-      const service = transactionService();
-      const response: AxiosResponse<RabbitHealth> = await service.fetchHealth();
+    setFilterState: (state) => set({ filter: state }),
 
-      if (response.status === 200) {
-        set({ health: response.data });
+    setSelectedResponse: (record) => set({ selectedResponse: record }),
+
+    startPolling: () => {
+      if (pollHandle) return; // déjà démarré ailleurs (ex: deux pages montées)
+      pollHandle = setInterval(pollTick, POLL_INTERVAL_MS);
+    },
+
+    stopPolling: () => {
+      if (pollHandle) {
+        clearInterval(pollHandle);
+        pollHandle = null;
       }
-    } catch (error) {
-      console.error("Failed to fetch rabbitmq health:", error);
-      throw error;
-    }
-  },
+    },
 
-  findTransaction(correlationId: string) {
-    const { pages } = get();
-
-    for (const page of pages) {
-      const found = page.data.find(
-        (transaction) => transaction.correlationId === correlationId,
-      );
-      if (found) {
-        return found;
-      }
-    }
-    return undefined;
-  },
-
-  setSelectedResponse: (record) => set({ selectedResponse: record }),
-}));
+    revealNewTransactions: async () => {
+      set({ live: true, currentPage: 1, pendingNewCount: 0 });
+      // Force un refresh immédiat plutôt que d'attendre le prochain tick de
+      // 10s — sinon l'utilisateur clique et ne voit rien changer tout de
+      // suite.
+      await pollTick();
+    },
+  };
+});

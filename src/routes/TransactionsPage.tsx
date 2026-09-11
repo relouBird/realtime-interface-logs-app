@@ -5,7 +5,6 @@ import { useSeoHead } from "@/composables/useSeoHead";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Search, ChevronRight, Download, RefreshCw } from "lucide-react";
-import { format } from "date-fns";
 
 import { cn } from "@/utils/cn";
 import { Button } from "@/components/ui/Button";
@@ -20,6 +19,7 @@ import {
 } from "@/utils/iso8583";
 import { useTransactionStore } from "@/stores/transactions.store";
 import { Pagination } from "@/components/display/Pagination";
+import { dateFormat } from "@/helpers";
 
 const STATUS_OPTIONS = [
   "All statuses",
@@ -65,7 +65,18 @@ export default function TransactionsPage() {
   const getNextPage = useTransactionStore((state) => state.getNextPage);
 
   const getMany = useTransactionStore((state) => state.getMany);
+  const setFilterState = useTransactionStore((state) => state.setFilterState);
   const loading = useTransactionStore((state) => state.loading);
+  const filter = useTransactionStore((state) => state.filter);
+
+  // live / nouvelles transactions — même mécanisme que sur l'Overview,
+  // puisque les deux pages partagent le même state de pagination.
+  const pendingNewCount = useTransactionStore((state) => state.pendingNewCount);
+  const revealNewTransactions = useTransactionStore(
+    (state) => state.revealNewTransactions,
+  );
+  const startPolling = useTransactionStore((state) => state.startPolling);
+  const stopPolling = useTransactionStore((state) => state.stopPolling);
 
   const filtered = useMemo(() => {
     const currentPayments = pages[currentPage - 1]?.data ?? [];
@@ -109,21 +120,33 @@ export default function TransactionsPage() {
     navigate(`/transactions/${tx.correlationId}`);
   };
 
-  // Chargement initial
+  // Chargement initial — Transactions veut TOUTES les transactions
+  // (filter = false). Overview partage le même store avec filter = true :
+  // sans le check sur `filter`, arriver ici juste après être passé par
+  // Overview affichait encore les données filtrées de l'Overview (pages
+  // déjà non vides, donc l'ancien guard `pages.length === 0` ne
+  // re-fetchait jamais).
   useEffect(() => {
-    // fonction asynchrone pour récupérer toutes les transactions
     async function getAllTransactions() {
       try {
+        setFilterState(false);
         await getMany();
       } catch (error) {
         console.log("Error :", error);
       }
     }
 
-    // si aucune page n'est chargée et que le chargement n'est pas en cours, on récupère toutes les transactions
-    if (pages.length === 0 && !loading) {
+    if (!loading && (pages.length === 0 || filter !== false)) {
       getAllTransactions();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Poll de 10s — idempotent (voir transactions.store.ts), donc pas grave
+  // si Overview l'a déjà démarré.
+  useEffect(() => {
+    startPolling();
+    return () => stopPolling();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -145,8 +168,24 @@ export default function TransactionsPage() {
             <Download className="size-4" />
             Export
           </Button>
-          <Button variant="ghost" size="sm" iconOnly>
+          <Button
+            variant="ghost"
+            size="sm"
+            iconOnly
+            onClick={() => revealNewTransactions()}
+            className="relative"
+            title={
+              pendingNewCount > 0
+                ? `${pendingNewCount} new — click to refresh`
+                : "Refresh"
+            }
+          >
             <RefreshCw className="size-4" />
+            {pendingNewCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-error-500 text-[9px] font-bold text-white-100">
+                {pendingNewCount > 9 ? "9+" : pendingNewCount}
+              </span>
+            )}
           </Button>
         </div>
       </div>
@@ -280,7 +319,7 @@ export default function TransactionsPage() {
                     <StatusBadge status={tx.status} />
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-xs text-text-secondary">
-                    {format(new Date(tx.createdAt), "HH:mm:ss")}
+                    {dateFormat(new Date(tx.createdAt), "HH:mm:ss")}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <ChevronRight className="size-4 text-text-tertiary" />
