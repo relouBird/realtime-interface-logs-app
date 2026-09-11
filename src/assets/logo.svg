@@ -1,0 +1,12 @@
+<svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="120" cy="120" r="82" fill="none" stroke="#287CA0" stroke-width="18" stroke-linecap="round"
+        stroke-dasharray="298.8 216.4" transform="rotate(-30 120 120)" />
+
+    <circle cx="120" cy="120" r="60" fill="none" stroke="#022238" stroke-width="14" stroke-linecap="round"
+        stroke-dasharray="233.7 143.3" transform="rotate(140 120 120)" />
+
+    <circle cx="120" cy="120" r="40" fill="none" stroke="#287CA0" stroke-width="10" stroke-linecap="round"
+        stroke-dasharray="165.9 85.4" transform="rotate(260 120 120)" />
+
+    <circle cx="120" cy="120" r="6" fill="#022238" />
+</svg>
