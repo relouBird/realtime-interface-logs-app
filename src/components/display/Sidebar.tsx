@@ -37,11 +37,11 @@ export function Sidebar() {
             )}
           >
             <span className="block text-xl font-title font-bold text-white-100">
-              Neapay
+              NeaLogs
             </span>
 
             <span className="block pt-0.5 text-xs font-semibold text-sidebar-nav-default-text/65">
-              Enterprise v2.4
+              Enterprise v1.0
             </span>
           </p>
         </div>
