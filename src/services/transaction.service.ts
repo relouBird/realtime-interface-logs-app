@@ -9,7 +9,14 @@ import type {
 // Interfaces de Bases
 interface LogsParams {
   cursor?: string;
+  filter?: boolean;
   limit?: number;
+}
+
+interface NewCountParams {
+  afterId?: string;
+  afterTimestamp?: string;
+  filter?: boolean;
 }
 
 interface ResponseFormData<T> {
@@ -42,14 +49,19 @@ export type TransactionServiceProps = {
   fetchSummary: () => Promise<
     AxiosResponse<ResponseFormSingleData<TransactionSummary>>
   >;
+  /** GET /api/payment/transactions/new-count */
+  fetchNewCount: (
+    params: NewCountParams,
+  ) => Promise<AxiosResponse<ResponseFormSingleData<{ count: number }>>>;
 };
 
 export default function transactionService(): TransactionServiceProps {
-  const fetchResponses = async ({ cursor, limit = 50 }: LogsParams) => {
+  const fetchResponses = async ({ cursor, limit = 50, filter }: LogsParams) => {
     return await request(`/payment/transactions`, {
       method: "get",
       params: {
         cursor,
+        filter,
         limit,
       },
     });
@@ -73,10 +85,26 @@ export default function transactionService(): TransactionServiceProps {
     });
   };
 
+  const fetchNewCount = async ({
+    afterId,
+    afterTimestamp,
+    filter,
+  }: NewCountParams) => {
+    return await request(`/payment/transactions/new-count`, {
+      method: "get",
+      params: {
+        afterId,
+        afterTimestamp,
+        filter,
+      },
+    });
+  };
+
   return {
     fetchResponses,
     fetchResponseById,
     fetchHealth,
     fetchSummary,
+    fetchNewCount,
   };
 }

@@ -1,6 +1,6 @@
 // routes/OverviewPage.tsx
 import { useSeoHead } from "@/composables/useSeoHead";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import {
   Newspaper,
   CheckCircle2,
@@ -23,6 +23,7 @@ import { ChannelBadge } from "@/components/transactions/ChannelBadge";
 import { useTransactionStore } from "@/stores/transactions.store";
 import { Pagination } from "@/components/display/Pagination";
 import { formatAmount } from "@/utils/iso8583";
+import { dateFormat } from "@/helpers";
 
 /* -------------------------------------------------------------------------- */
 /*  Formatting helpers — centralise the null-handling so the JSX below stays  */
@@ -173,22 +174,30 @@ export default function OverviewPage() {
   const getNextPage = useTransactionStore((state) => state.getNextPage);
 
   const getMany = useTransactionStore((state) => state.getMany);
+  const setFilterState = useTransactionStore((state) => state.setFilterState);
   const loading = useTransactionStore((state) => state.loading);
+
+  // live / nouvelles transactions
+  const live = useTransactionStore((state) => state.live);
+  const pendingNewCount = useTransactionStore((state) => state.pendingNewCount);
+  const revealNewTransactions = useTransactionStore(
+    (state) => state.revealNewTransactions,
+  );
+  const startPolling = useTransactionStore((state) => state.startPolling);
+  const stopPolling = useTransactionStore((state) => state.stopPolling);
 
   const filtered = useMemo(() => {
     const currentPayments = pages[currentPage - 1]?.data ?? [];
     return currentPayments;
   }, [currentPage, pages]);
 
-  const [showIncomingPrompt, setShowIncomingPrompt] = useState(true);
-
-  const revealIncoming = () => {
-    setShowIncomingPrompt(false);
-  };
-
+  // Chargement initial — l'Overview veut toujours les transactions
+  // financières uniquement (filter = true), quel que soit ce que la page
+  // Transactions a demandé avant.
   useEffect(() => {
     async function getAllData() {
       try {
+        setFilterState(true);
         await getMany();
         await fetchSummary();
       } catch (error) {
@@ -196,10 +205,17 @@ export default function OverviewPage() {
       }
     }
 
-    // si aucune page n'est chargée et que le chargement n'est pas en cours, on récupère toutes les transactions
-    if (pages.length === 0 && !loading) {
+    if (!loading) {
       getAllData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Poll de 10s — idempotent, donc pas grave si Transactions le démarre
+  // aussi ailleurs.
+  useEffect(() => {
+    startPolling();
+    return () => stopPolling();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -249,9 +265,6 @@ export default function OverviewPage() {
               TOTAL TRANSACTIONS (24H)
             </p>
             <p className="mt-0.5 text-sm font-semibold text-foreground-100">
-              {/* Pas de % de variation ici : le backend renvoie totalTodayChangePct
-                  (aujourd'hui vs hier), pas d'équivalent pour la fenêtre 24h
-                  glissante. TODO backend si on veut ce delta un jour. */}
               <span className="font-subtitle">
                 {formatCount(summary?.total24h)}
               </span>
@@ -283,13 +296,13 @@ export default function OverviewPage() {
 
       {/* Live operations panel */}
       <div className=" bg-card-background-100 shadow-xs relative">
-        {showIncomingPrompt && (
+        {!live && pendingNewCount > 0 && (
           <button
-            onClick={revealIncoming}
+            onClick={() => revealNewTransactions()}
             className="absolute left-1/2 top-13 z-10 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full bg-foreground-100 px-3 py-1.5 text-xs font-medium text-white-100 shadow-md hover:bg-foreground-soft-200"
           >
             <ArrowUp className="size-3.5" />
-            Show new operations (7)
+            Show new operations ({pendingNewCount})
           </button>
         )}
 
@@ -303,7 +316,13 @@ export default function OverviewPage() {
           </button>
 
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="ghost" size="xs" iconOnly>
+            <Button
+              variant="ghost"
+              size="xs"
+              iconOnly
+              onClick={() => revealNewTransactions()}
+              title="Refresh now"
+            >
               <RefreshCw className="size-4" />
             </Button>
             <Button variant="ghost" size="xs" iconOnly>
@@ -338,13 +357,13 @@ export default function OverviewPage() {
                     className="border-b border-card-border last:border-0 hover:bg-background-soft-50"
                   >
                     <td className="whitespace-nowrap px-4 py-3 font-subtitle text-xs text-text-secondary">
-                      {op.createdAt}
+                      {dateFormat(new Date(op.createdAt), "HH:mm:ss.lll")}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 font-subtitle text-xs text-foreground-100 underline decoration-card-border underline-offset-2">
                       {reference}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-foreground-100">
-                      {op.status}
+                      <ChannelBadge channel={op.action.replace("_", " ")} />
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
                       <ChannelBadge
@@ -358,9 +377,6 @@ export default function OverviewPage() {
                             op.request.transactionAmount,
                             op.request.transactionCurrency,
                           )}
-                          <span className="text-text-tertiary">
-                            {op.request.billingCurrency}
-                          </span>
                         </>
                       ) : (
                         "—"

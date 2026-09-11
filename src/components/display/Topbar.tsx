@@ -6,7 +6,7 @@ import { useStore } from "zustand";
 import { SurfaceButton } from "../ui/SurfaceButton";
 import { SearchBar } from "./SearchBar";
 
-export function Topbar() {
+export function Topbar({ health }: { health: boolean }) {
   // Store
   const { sidebarVisibility, show, close } = useStore(useDisplayStore);
 
@@ -59,7 +59,11 @@ export function Topbar() {
 
             {/* Statut LIVE */}
             <div className="flex items-center ml-2 gap-1.5 px-3 py-1.5 rounded-xs bg-primary-500/20 text-black">
-              <div className="size-2 rounded-full bg-red-500 animate-pulse"></div>
+              {health ? (
+                <div className="size-2 rounded-full bg-green-500 animate-pulse"></div>
+              ) : (
+                <div className="size-2 rounded-full bg-red-500 animate-pulse"></div>
+              )}
               <span className="block pt-px text-xs font-bold">LIVE</span>
             </div>
           </div>
